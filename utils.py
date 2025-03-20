@@ -71,9 +71,16 @@ def prepare_patches(tensor_dir = './Crops/',  # Folder with crop_*.pt files
     return vectors, patches, labels
 
 def plot_crops(vectors, crops, labels):
-    # Apply t-SNE
-    tsne = TSNE(n_components=2, random_state=42)
-    vectors_2d = tsne.fit_transform(vectors)
+    # Apply t-SNE only if there is non already applied
+    # check id vectors_2d_crops.npy file exists
+    if os.path.exists('vectors_2d_crops.npy'):
+        vectors_2d = np.load('vectors_2d_crops.npy')
+    else:        # Apply t-SNE
+        # Note: This can be computationally expensive for large datasets
+        # Consider using PCA first to reduce dimensionality before t-SNE
+        tsne = TSNE(n_components=2, random_state=42)
+        vectors_2d = tsne.fit_transform(vectors)
+        np.save('vectors_2d_crops.npy', vectors_2d)
 
     # Normalize crops for visualization
     crops_normalized = [(crop - crop.min()) / (crop.max() - crop.min()) for crop in crops]
@@ -122,9 +129,16 @@ def plot_crops(vectors, crops, labels):
     return app
 
 def plot_patches(vectors, patches, labels):
-    # Apply t-SNE
-    tsne = TSNE(n_components=2, random_state=42)
-    vectors_2d = tsne.fit_transform(vectors)
+    # Apply t-SNE only if there is non already applied
+    # check id vectors_2d_patches.npy file exists
+    if os.path.exists('vectors_2d_patches.npy'):
+        vectors_2d = np.load('vectors_2d_patches.npy')
+    else:        # Apply t-SNE
+        # Note: This can be computationally expensive for large datasets
+        # Consider using PCA first to reduce dimensionality before t-SNE
+        tsne = TSNE(n_components=2, random_state=42)
+        vectors_2d = tsne.fit_transform(vectors)
+        np.save('vectors_2d_patches.npy', vectors_2d)
     
     # Normalize patches for visualization
     patches_normalized = [(patch - patch.min()) / (patch.max() - patch.min()) for patch in patches]
