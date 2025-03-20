@@ -15,6 +15,14 @@ from PIL import Image
 
 def prepare_crops(tensor_dir = './Crops/', # Folder with crop_*.pt files
                   embedding_path = './output_features/output_features_2k.pt'): # Embedding file
+    # First of all, check if vectors, crops and labels are already stored in respective files
+    if os.path.exists('vectors_crops.npy') and os.path.exists('crops.npy') and os.path.exists('labels_crops.npy'):
+        vectors = np.load('vectors_crops.npy')
+        crops = np.load('crops.npy', allow_pickle=True)
+        labels = np.load('labels_crops.npy', allow_pickle=True)
+        return vectors, crops, labels
+
+    # If not, proceed with loading and processing the data
     # Load embeddings
     embeddings_dict = torch.load(embedding_path)
     
@@ -39,10 +47,22 @@ def prepare_crops(tensor_dir = './Crops/', # Folder with crop_*.pt files
     
     vectors = np.array(vectors)
     crops = np.array(crops)
+    # Before returning, save the vectors, crops and labels to respective files for future use
+    np.save('vectors_crops.npy', vectors)
+    np.save('crops.npy', crops)
+    np.save('labels_crops.npy', labels)
+
     return vectors, crops, labels
 
 def prepare_patches(tensor_dir = './Crops/',  # Folder with crop_*.pt files
                  embedding_path = './output_features/output_features.pt'): 
+    # First of all, check if vectors, patches and labels are already stored in respective files
+    if os.path.exists('vectors_patches.npy') and os.path.exists('patches.npy') and os.path.exists('labels_patches.npy'):
+        vectors = np.load('vectors_patches.npy')
+        patches = np.load('patches.npy', allow_pickle=True)
+        labels = np.load('labels_patches.npy', allow_pickle=True)
+        return vectors, patches, labels
+    # If not, proceed with loading and processing the data
     # Load embeddings
     embeddings_dict = torch.load(embedding_path)
     
@@ -67,6 +87,11 @@ def prepare_patches(tensor_dir = './Crops/',  # Folder with crop_*.pt files
                 labels.append(f'{filename}_patch_{i}_{j}')
     
     vectors = np.array(vectors)
+
+    # Before returning, save the vectors, patches and labels to respective files for future use
+    np.save('vectors_patches.npy', vectors)
+    np.save('patches.npy', patches)
+    np.save('labels_patches.npy', labels)
 
     return vectors, patches, labels
 
