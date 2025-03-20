@@ -1,0 +1,173 @@
+import torch
+import os
+import numpy as np
+from sklearn.manifold import TSNE
+import plotly.express as px
+
+# Using dash for advanced image hovering (optional but recommended)
+import dash
+from dash import dcc, html
+from dash.dependencies import Input, Output
+import plotly.graph_objects as go
+import base64
+import io
+from PIL import Image
+
+def prepare_crops(tensor_dir = './Crops/', # Folder with crop_*.pt files
+                  embedding_path = './output_features/output_features_2k.pt'): # Embedding file
+    # Load embeddings
+    embeddings_dict = torch.load(embedding_path)
+    
+    # Prepare data lists
+    vectors, crops, labels = [], [], []
+    
+    
+    # Iterate and preprocess data
+    for filename, embedding in embeddings_dict.items():
+        tensor_path = os.path.join(tensor_dir, filename)
+        if not os.path.exists(tensor_path):
+            continue
+    
+        tensor = torch.load(tensor_path)  # Load 2048x2048 tensor
+        # For example, to reduce to 512x512 (1/4 of each dimension)
+        stride = 8
+        subsampled_tensor = tensor[::stride, ::stride]
+    
+        crops.append(subsampled_tensor)
+        labels.append(f'{filename}')
+        vectors.append(embedding.numpy())
+    
+    vectors = np.array(vectors)
+    crops = np.array(crops)
+    return vectors, crops, labels
+
+def prepare_patches(tensor_dir = './Crops/',  # Folder with crop_*.pt files
+                 embedding_path = './output_features/output_features.pt'): 
+    # Load embeddings
+    embeddings_dict = torch.load(embedding_path)
+    
+    # Prepare data lists
+    vectors, patches, labels = [], [], []
+   
+    # Iterate and preprocess data
+    for filename, embedding in embeddings_dict.items():
+        tensor_path = os.path.join(tensor_dir, filename)
+        if not os.path.exists(tensor_path):
+            continue
+    
+        tensor = torch.load(tensor_path)  # Load 2048x2048 tensor
+        tensor_reshaped = tensor.reshape(8, 256, 8, 256)
+        emb = embedding.reshape(8, 8, 384)
+    
+        for i in range(8):
+            for j in range(8):
+                vectors.append(emb[i, j].numpy())  # 384-dimensional vector
+                patch = tensor_reshaped[i, :, j, :].numpy()
+                patches.append(patch)
+                labels.append(f'{filename}_patch_{i}_{j}')
+    
+    vectors = np.array(vectors)
+
+    return vectors, patches, labels
+
+def plot_crops(vectors, crops, labels):
+    # Apply t-SNE
+    tsne = TSNE(n_components=2, random_state=42)
+    vectors_2d = tsne.fit_transform(vectors)
+
+    # Normalize crops for visualization
+    crops_normalized = [(crop - crop.min()) / (crop.max() - crop.min()) for crop in crops]
+    
+    # Create interactive plot
+    fig = px.scatter(x=vectors_2d[:, 0], y=vectors_2d[:, 1], hover_name=labels)
+    
+    # Create Dash app
+    #app = dash.Dash(__name__)
+    app = dash.Dash(__name__, suppress_callback_exceptions=True)
+    
+    app.layout = html.Div([
+        dcc.Graph(id='scatter-plot', figure=fig, style={'width': '70%', 'display': 'inline-block'}),
+        html.Img(id='hover-image', style={'width': '256px', 'height': '256px', 'display': 'inline-block', 'vertical-align': 'top', 'margin-left': '20px'})
+    ])
+    
+    # Convert crop to image
+    def crop_to_img(crop, cmap='viridis'):
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import io
+        import base64
+        from PIL import Image
+    
+        cmap_func = plt.get_cmap(cmap)
+        crop_colored = cmap_func(crop.squeeze())[:, :, :3]  # Apply colormap and discard alpha channel
+        img = (crop_colored * 255).astype(np.uint8)
+    
+        image_pil = Image.fromarray(img)
+        buff = io.BytesIO()
+        image_pil.save(buff, format="PNG")
+        encoded_image = base64.b64encode(buff.getvalue()).decode()
+        return f'data:image/png;base64,{encoded_image}'
+    
+    @app.callback(
+        Output('hover-image', 'src'),
+        Input('scatter-plot', 'hoverData')
+    )
+    def display_hover_image(hoverData):
+        if hoverData is None:
+            return dash.no_update
+    
+        point_idx = hoverData['points'][0]['pointIndex']
+        return crop_to_img(crops_normalized[point_idx])
+
+    return app
+
+def plot_patches(vectors, patches, labels):
+    # Apply t-SNE
+    tsne = TSNE(n_components=2, random_state=42)
+    vectors_2d = tsne.fit_transform(vectors)
+    
+    # Normalize patches for visualization
+    patches_normalized = [(patch - patch.min()) / (patch.max() - patch.min()) for patch in patches]
+    
+    # Create interactive plot
+    fig = px.scatter(x=vectors_2d[:, 0], y=vectors_2d[:, 1], hover_name=labels)
+    
+    # Create Dash app
+    #app = dash.Dash(__name__)
+    app = dash.Dash(__name__, suppress_callback_exceptions=True)
+    
+    app.layout = html.Div([
+        dcc.Graph(id='scatter-plot', figure=fig, style={'width': '70%', 'display': 'inline-block'}),
+        html.Img(id='hover-image', style={'width': '256px', 'height': '256px', 'display': 'inline-block', 'vertical-align': 'top', 'margin-left': '20px'})
+    ])
+    
+    # Convert patch to image
+    def patch_to_img(patch, cmap='viridis'):
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import io
+        import base64
+        from PIL import Image
+    
+        cmap_func = plt.get_cmap(cmap)
+        patch_colored = cmap_func(patch.squeeze())[:, :, :3]  # Apply colormap and discard alpha channel
+        img = (patch_colored * 255).astype(np.uint8)
+    
+        image_pil = Image.fromarray(img)
+        buff = io.BytesIO()
+        image_pil.save(buff, format="PNG")
+        encoded_image = base64.b64encode(buff.getvalue()).decode()
+        return f'data:image/png;base64,{encoded_image}'
+    
+    @app.callback(
+        Output('hover-image', 'src'),
+        Input('scatter-plot', 'hoverData')
+    )
+    def display_hover_image(hoverData):
+        if hoverData is None:
+            return dash.no_update
+    
+        point_idx = hoverData['points'][0]['pointIndex']
+        return patch_to_img(patches_normalized[point_idx])
+
+    return app
