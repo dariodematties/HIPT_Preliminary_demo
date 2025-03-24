@@ -1,6 +1,9 @@
-import torch
 import os
+import random
 import numpy as np
+
+import torch
+
 from sklearn.manifold import TSNE
 import plotly.express as px
 
@@ -12,6 +15,8 @@ import plotly.graph_objects as go
 import base64
 import io
 from PIL import Image
+
+from concurrent.futures import ProcessPoolExecutor
 
 def prepare_crops(tensor_dir = './Crops/', # Folder with crop_*.pt files
                   embedding_path = './output_features/output_features_2k.pt'): # Embedding file
@@ -210,3 +215,61 @@ def plot_patches(vectors, patches, labels):
         return patch_to_img(patches_normalized[point_idx])
 
     return app
+###############################################
+######## parallel processing functions ########
+###############################################
+def process_single_embedding(args):
+    filename, embedding, tensor_dir = args
+
+    tensor_path = os.path.join(tensor_dir, filename)
+    if not os.path.exists(tensor_path):
+        return [], [], []
+
+    tensor = torch.load(tensor_path)
+    tensor_reshaped = tensor.reshape(8, 256, 8, 256)
+    emb = embedding.reshape(8, 8, 384)
+
+    vectors_local, patches_local, labels_local = [], [], []
+
+    for i in range(8):
+        for j in range(8):
+            vectors_local.append(emb[i, j].numpy())
+            patch = tensor_reshaped[i, :, j, :].numpy()
+            patches_local.append(patch)
+            labels_local.append(f'{filename}_patch_{i}_{j}')
+
+    return vectors_local, patches_local, labels_local
+
+def prepare_patches_parallel(tensor_dir='./Crops/', embedding_path='./output_features/output_features.pt', subsample_ratio=1.0):
+    if os.path.exists('vectors_patches.npy') and os.path.exists('patches.npy') and os.path.exists('labels_patches.npy'):
+        vectors = np.load('vectors_patches.npy')
+        patches = np.load('patches.npy', allow_pickle=True)
+        labels = np.load('labels_patches.npy', allow_pickle=True)
+        return vectors, patches, labels
+
+    embeddings_dict = torch.load(embedding_path)
+
+    filenames = list(embeddings_dict.keys())
+    if subsample_ratio < 1.0:
+        num_samples = int(len(filenames) * subsample_ratio)
+        filenames = random.sample(filenames, num_samples)
+
+    args_list = [(filename, embeddings_dict[filename], tensor_dir) for filename in filenames]
+
+    vectors, patches, labels = [], [], []
+
+    with ProcessPoolExecutor() as executor:
+        results = executor.map(process_single_embedding, args_list)
+
+    for vec_local, patch_local, label_local in results:
+        vectors.extend(vec_local)
+        patches.extend(patch_local)
+        labels.extend(label_local)
+
+    vectors = np.array(vectors)
+
+    np.save('vectors_patches.npy', vectors)
+    np.save('patches.npy', patches)
+    np.save('labels_patches.npy', labels)
+
+    return vectors, patches, labels
