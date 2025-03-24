@@ -273,3 +273,54 @@ def prepare_patches_parallel(tensor_dir='./Crops/', embedding_path='./output_fea
     np.save('labels_patches.npy', labels)
 
     return vectors, patches, labels
+
+def process_single_crop(args):
+    filename, embedding, tensor_dir, stride = args
+
+    tensor_path = os.path.join(tensor_dir, filename)
+    if not os.path.exists(tensor_path):
+        return None, None, None
+
+    tensor = torch.load(tensor_path)
+    subsampled_tensor = tensor[::stride, ::stride].numpy()
+    label = filename
+    vector = embedding.numpy()
+
+    return vector, subsampled_tensor, label
+
+def prepare_crops_parallel(tensor_dir='./Crops/', embedding_path='./output_features/output_features_2k.pt', stride=8, subsample_ratio=1.0):
+    if os.path.exists('vectors_crops.npy') and os.path.exists('crops.npy') and os.path.exists('labels_crops.npy'):
+        vectors = np.load('vectors_crops.npy')
+        crops = np.load('crops.npy', allow_pickle=True)
+        labels = np.load('labels_crops.npy', allow_pickle=True)
+        return vectors, crops, labels
+
+    embeddings_dict = torch.load(embedding_path)
+
+    filenames = list(embeddings_dict.keys())
+    if subsample_ratio < 1.0:
+        num_samples = int(len(filenames) * subsample_ratio)
+        filenames = random.sample(filenames, num_samples)
+
+    args_list = [(filename, embeddings_dict[filename], tensor_dir, stride) for filename in filenames]
+
+    vectors, crops, labels = [], [], []
+
+    with ProcessPoolExecutor() as executor:
+        results = executor.map(process_single_crop, args_list)
+
+    for vector, crop, label in results:
+        if vector is None:
+            continue
+        vectors.append(vector)
+        crops.append(crop)
+        labels.append(label)
+
+    vectors = np.array(vectors)
+    crops = np.array(crops)
+
+    np.save('vectors_crops.npy', vectors)
+    np.save('crops.npy', crops)
+    np.save('labels_crops.npy', labels)
+
+    return vectors, crops, labels
